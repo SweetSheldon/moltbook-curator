@@ -6,20 +6,7 @@ export class VotesService {
   constructor(private readonly postsService: PostsService) {}
 
   addVote(postId: string) {
-    const post = this.postsService.updateVotes(postId, true);
-
-    if (!post) {
-      return { success: false, error: 'Post not found' };
-    }
-
-    return {
-      success: true,
-      post,
-    };
-  }
-
-  removeVote(postId: string) {
-    const post = this.postsService.updateVotes(postId, false);
+    const post = this.postsService.incrementVotes(postId);
 
     if (!post) {
       return { success: false, error: 'Post not found' };

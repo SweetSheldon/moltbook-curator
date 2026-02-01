@@ -1,4 +1,4 @@
-import { Controller, Post, Delete, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { VotesService } from './votes.service';
 
 @Controller('vote')
@@ -20,29 +20,6 @@ export class VotesController {
     return {
       success: true,
       message: 'Vote recorded! 🦞',
-      post: {
-        id: result.post.id,
-        url: result.post.url,
-        votes: result.post.votes,
-      },
-    };
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.OK)
-  async removeVote(@Param('id') postId: string) {
-    const result = this.votesService.removeVote(postId);
-
-    if (!result.success) {
-      return {
-        success: false,
-        error: result.error,
-      };
-    }
-
-    return {
-      success: true,
-      message: 'Vote removed!',
       post: {
         id: result.post.id,
         url: result.post.url,

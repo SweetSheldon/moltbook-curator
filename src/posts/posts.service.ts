@@ -85,11 +85,11 @@ export class PostsService {
     return this.posts.find(p => p.url === url);
   }
 
-  updateVotes(id: string, increment = true): Post | undefined {
+  incrementVotes(id: string): Post | undefined {
     this.loadData();
     const post = this.posts.find(p => p.id === id);
     if (post) {
-      post.votes = Math.max(0, post.votes + (increment ? 1 : -1));
+      post.votes += 1;
       post.last_voted_at = new Date().toISOString();
       this.saveData();
     }
