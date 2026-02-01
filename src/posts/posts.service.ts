@@ -245,4 +245,46 @@ export class PostsService {
 
     return stats;
   }
+
+  async getLatestArchive(): Promise<{
+    posts: Project[];
+    count: number;
+    archived_at: string | null;
+  }> {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const archiveDir = path.join(process.cwd(), 'data', 'archive');
+
+      if (!fs.existsSync(archiveDir)) {
+        return { posts: [], count: 0, archived_at: null };
+      }
+
+      const files = fs.readdirSync(archiveDir)
+        .filter((f: string) => f.startsWith('projects_') && f.endsWith('.json'))
+        .sort()
+        .reverse();
+
+      if (files.length === 0) {
+        return { posts: [], count: 0, archived_at: null };
+      }
+
+      const latestFile = files[0];
+      const data = fs.readFileSync(path.join(archiveDir, latestFile), 'utf-8');
+      const posts = JSON.parse(data);
+
+      // Extract timestamp from filename: projects_2026-02-01_16-00.json
+      const match = latestFile.match(/projects_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.json/);
+      const archived_at = match ? match[1].replace('_', 'T').replace('-', ':') + ':00Z' : null;
+
+      return {
+        posts,
+        count: posts.length,
+        archived_at,
+      };
+    } catch (error) {
+      console.error('Failed to load archive:', error.message);
+      return { posts: [], count: 0, archived_at: null };
+    }
+  }
 }

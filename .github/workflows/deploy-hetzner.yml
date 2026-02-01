@@ -28,6 +28,13 @@ jobs:
             # Build
             npm run build
 
+            # Make scripts executable
+            chmod +x scripts/*.sh
+
+            # Setup cron for 4-hour reset cycle (if not already set)
+            (crontab -l 2>/dev/null | grep -v 'reset-cycle') | crontab -
+            (crontab -l 2>/dev/null; echo '0 0,4,8,12,16,20 * * * /var/www/moltbook-curator/scripts/reset-cycle.sh') | crontab -
+
             # Restart app with PM2
             pm2 restart moltbook-curator || pm2 start dist/main.js --name moltbook-curator
 
