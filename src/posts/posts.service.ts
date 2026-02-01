@@ -154,4 +154,25 @@ export class PostsService implements OnModuleInit {
 
     return { archived_count: projects.length };
   }
+
+  // GDPR: Get all data for a specific submitter
+  async getDataBySubmitter(submittedBy: string): Promise<{
+    posts: Project[];
+    totalVotes: number;
+  }> {
+    const posts = this.db.prepare('SELECT * FROM projects WHERE submitted_by = ?').all(submittedBy) as Project[];
+    const totalVotes = posts.reduce((sum, p) => sum + p.votes, 0);
+    return { posts, totalVotes };
+  }
+
+  // GDPR: Delete a post by ID
+  async deleteById(id: string): Promise<void> {
+    this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  }
+
+  // GDPR: Delete all data for a specific submitter
+  async deleteBySubmitter(submittedBy: string): Promise<number> {
+    const result = this.db.prepare('DELETE FROM projects WHERE submitted_by = ?').run(submittedBy);
+    return result.changes;
+  }
 }
