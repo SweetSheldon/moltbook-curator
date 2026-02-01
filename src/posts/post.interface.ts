@@ -7,3 +7,6 @@ export interface Project {
   created_at: string;
   last_voted_at?: string | null;
 }
+
+// Alias for backward compatibility
+export type Post = Project;

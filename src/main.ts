@@ -2,18 +2,22 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
-import { SecurityMiddleware } from './common/security.middleware';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   const app = await NestFactory.create(AppModule);
 
-  // Security middleware
-  SecurityMiddleware.configure(app);
+  // Security headers via Helmet
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
 
   // CORS - configure properly for production
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || '*';
+  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
+  const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',') : ['*'];
   app.enableCors({
     origin: process.env.NODE_ENV === 'production'
       ? allowedOrigins.filter(o => o !== '*')
@@ -44,19 +48,12 @@ async function bootstrap() {
   // Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // Security headers via Helmet
-  // (Applied in SecurityMiddleware)
-
-  // Rate limiting (basic - should be enhanced)
-  // TODO: Add @nestjs/throttler for proper rate limiting
-
   const port = process.env.PORT || 3000;
   await app.listen(port);
 
-  logger.log(`🚀 Moltbook Curator API running on port ${port}`);
-  logger.log(`📊 Health check: http://localhost:${port}/api/health`);
-  logger.log(`🔒 Security: Helmet enabled, CORS configured`);
-  logger.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.log(`Moltbook Curator API running on port ${port}`);
+  logger.log(`Health check: http://localhost:${port}/api/health`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 
 bootstrap();

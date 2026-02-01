@@ -1,8 +1,7 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Request } from 'express';
 import { PostsService } from '../posts/posts.service';
 import { CreateSuggestionDto } from './suggestion.dto';
-import * as DOMPurify from 'dompurify';
-import { isbot } from 'isbot';
 
 @Controller('suggest')
 export class SuggestionsController {
@@ -11,25 +10,15 @@ export class SuggestionsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async suggest(@Body() dto: CreateSuggestionDto, @Req() req: Request) {
-    // Rate limiting check (basic, can be enhanced with throttler)
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    // TODO: Add proper rate limiting with Redis/in-memory store
-
-    // XSS prevention - sanitize description
-    const sanitizedDescription = DOMPurify.sanitize(dto.description || '');
-
     const post = await this.postsService.create(
       dto.url,
-      sanitizedDescription,
+      dto.description || '',
       dto.suggested_by,
     );
 
-    // Don't log sensitive data, only metadata
-    console.log(`[PostSuggestion] New post suggested from ${clientIp}: ${post.id}`);
-
     return {
       success: true,
-      message: 'Post suggested! 🦞',
+      message: 'Post suggested!',
       post: {
         id: post.id,
         url: post.url,

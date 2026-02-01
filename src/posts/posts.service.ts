@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Project } from './project.interface';
+import { Project } from './post.interface';
 import { Mutex } from 'async-mutex';
 
 @Injectable()
-export class ProjectsService {
+export class PostsService {
   private projects: Project[] = [];
   private fileMutex = new Mutex();
 
@@ -180,7 +180,7 @@ export class ProjectsService {
     return projects.find(p => p.url === url);
   }
 
-  async incrementVotes(id: string, submittedBy: string): Promise<Project | undefined> {
+  async incrementVotes(id: string, submittedBy?: string): Promise<Project | undefined> {
     const release = await this.fileMutex.acquire();
     try {
       // Reload data inside lock
@@ -240,7 +240,7 @@ export class ProjectsService {
             projects.filter(proj => proj.submitted_by === p.submitted_by).reduce((sum, proj) => sum + proj.votes, 0)
           ])
         )
-      ).sort((a, b) => b.votes - a.votes).slice(0, 10).map(([name, votes]) => ({ name, votes }))
+      ).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 10).map(([name, votes]) => ({ name: name as string, votes: votes as number }))
     };
 
     return stats;

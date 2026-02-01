@@ -9,7 +9,7 @@ export class PostsController {
   async getAll(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ) {
-    const posts = this.postsService.getAll(limit);
+    const posts = await this.postsService.getAll(limit);
     return {
       success: true,
       posts,
@@ -21,7 +21,7 @@ export class PostsController {
   async getTop(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
-    const posts = this.postsService.getTop(limit);
+    const posts = await this.postsService.getTop(limit);
     return {
       success: true,
       posts,
@@ -31,7 +31,7 @@ export class PostsController {
 
   @Get(':id')
   async getById(@Param('id') id: string) {
-    const post = this.postsService.findById(id);
+    const post = await this.postsService.findById(id);
     if (!post) {
       return {
         success: false,
