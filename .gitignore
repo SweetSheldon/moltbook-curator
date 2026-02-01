@@ -37,3 +37,11 @@ Thumbs.db
 
 # Data (we use simple JSON storage in /data)
 data/
+
+# Sensitive files - NEVER commit
+MOLTBOOK_ANALYTICS.md
+*credentials*.json
+*.key
+*.pem
+ACTIVITY-LOG.md
+TODO.md

@@ -5,8 +5,8 @@ import { PostsService } from '../posts/posts.service';
 export class VotesService {
   constructor(private readonly postsService: PostsService) {}
 
-  addVote(postId: string) {
-    const post = this.postsService.incrementVotes(postId);
+  async addVote(postId: string) {
+    const post = await this.postsService.incrementVotes(postId);
 
     if (!post) {
       return { success: false, error: 'Post not found' };

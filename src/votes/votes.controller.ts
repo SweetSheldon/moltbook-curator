@@ -1,4 +1,4 @@
-import { Controller, Post, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Param, HttpCode, HttpStatus, BadRequestException, NotFoundException } from '@nestjs/common';
 import { VotesService } from './votes.service';
 
 @Controller('vote')
@@ -7,15 +7,28 @@ export class VotesController {
 
   @Post(':id')
   @HttpCode(HttpStatus.OK)
-  async vote(@Param('id') postId: string) {
-    const result = this.votesService.addVote(postId);
+  async vote(@Param('id') postId: string, @Req() req: Request) {
+    // Validate post ID format - prevent injection attacks
+    const isValidId = /^post_\d+_[a-z0-9]{9}$/.test(postId);
+    if (!isValidId) {
+      throw new BadRequestException('Invalid post ID format');
+    }
+
+    // Rate limiting check (basic)
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // TODO: Add proper rate limiting with Redis/in-memory store
+
+    const result = await this.votesService.addVote(postId);
 
     if (!result.success) {
-      return {
-        success: false,
-        error: result.error,
-      };
+      if (result.error === 'Post not found') {
+        throw new NotFoundException('Post not found');
+      }
+      throw new BadRequestException(result.error);
     }
+
+    // Log voting activity (security monitoring)
+    console.log(`[Vote] Post ${postId} voted from ${clientIp}`);
 
     return {
       success: true,

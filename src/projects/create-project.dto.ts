@@ -1,7 +1,18 @@
-import { IsString, IsNotEmpty, IsOptional, MaxLength, MinLength, IsUrl } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  MaxLength,
+  MinLength,
+  IsUrl,
+  Matches,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
-export class CreateSuggestionDto {
+export interface CreateProjectDto {
   @IsUrl({}, { message: 'URL must be a valid URL' })
   @IsNotEmpty({ message: 'URL is required' })
   @MaxLength(2000, { message: 'URL must be less than 2000 characters' })
@@ -11,14 +22,14 @@ export class CreateSuggestionDto {
   @IsString()
   @IsOptional()
   @MinLength(1, { message: 'Description must be at least 1 character' })
-  @MaxLength(500, { message: 'Description must be less than 500 characters' })
+  @MaxLength(1000, { message: 'Description must be less than 1000 characters' })
   @Transform(({ value }) => value?.trim())
   description?: string;
 
   @IsString()
   @IsOptional()
-  @MinLength(1, { message: 'Suggested by must be at least 1 character' })
-  @MaxLength(50, { message: 'Suggested by must be less than 50 characters' })
+  @MinLength(1, { message: 'Submitted by must be at least 1 character' })
+  @MaxLength(50, { message: 'Submitted by must be less than 50 characters' })
   @Transform(({ value }) => value?.trim())
-  suggested_by?: string;
+  submitted_by?: string;
 }
