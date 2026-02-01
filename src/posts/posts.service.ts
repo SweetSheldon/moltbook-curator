@@ -35,44 +35,44 @@ export class PostsService {
     }
   }
 
-  getAll(): Post[] {
+  create(url: string, description: string, suggestedBy: string): Post {
     this.loadData();
-    return this.posts;
+
+    // Check if URL already exists
+    const existing = this.posts.find(p => p.url === url);
+    if (existing) {
+      return existing;
+    }
+
+    const post: Post = {
+      id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      url,
+      description,
+      suggested_by: suggestedBy || 'anonymous',
+      votes: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    this.posts.push(post);
+    this.saveData();
+
+    return post;
+  }
+
+  getAll(limit?: number): Post[] {
+    this.loadData();
+    let result = this.posts;
+    if (limit) {
+      result = result.slice(0, limit);
+    }
+    return result;
   }
 
   getTop(limit: number): Post[] {
     this.loadData();
     return this.posts
-      .sort((a, b) => (b.votes || 0) - (a.votes || 0))
+      .sort((a, b) => b.votes - a.votes)
       .slice(0, limit);
-  }
-
-  getRecent(limit: number): Post[] {
-    this.loadData();
-    return this.posts
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, limit);
-  }
-
-  getFeed(limit: number): Post[] {
-    this.loadData();
-    const topCount = Math.floor(limit * 0.4);
-    const recentCount = limit - topCount;
-
-    const topPosts = this.getTop(topCount);
-    const recentPosts = this.getRecent(recentCount);
-
-    const seenIds = new Set(topPosts.map(p => p.id));
-    const combined = [...topPosts];
-
-    for (const post of recentPosts) {
-      if (!seenIds.has(post.id)) {
-        combined.push(post);
-        seenIds.add(post.id);
-      }
-    }
-
-    return combined;
   }
 
   findById(id: string): Post | undefined {
@@ -80,19 +80,19 @@ export class PostsService {
     return this.posts.find(p => p.id === id);
   }
 
+  findByUrl(url: string): Post | undefined {
+    this.loadData();
+    return this.posts.find(p => p.url === url);
+  }
+
   updateVotes(id: string, increment = true): Post | undefined {
     this.loadData();
     const post = this.posts.find(p => p.id === id);
     if (post) {
-      post.votes = (post.votes || 0) + (increment ? 1 : -1);
+      post.votes = Math.max(0, post.votes + (increment ? 1 : -1));
       post.last_voted_at = new Date().toISOString();
       this.saveData();
     }
     return post;
-  }
-
-  updateAllPosts(posts: Post[]) {
-    this.posts = posts;
-    this.saveData();
   }
 }

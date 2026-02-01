@@ -1,9 +1,21 @@
-import { Controller, Get, Query, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
 import { PostsService } from './posts.service';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
+
+  @Get()
+  async getAll(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ) {
+    const posts = this.postsService.getAll(limit);
+    return {
+      success: true,
+      posts,
+      count: posts.length,
+    };
+  }
 
   @Get('top')
   async getTop(
@@ -17,27 +29,18 @@ export class PostsController {
     };
   }
 
-  @Get('recent')
-  async getRecent(
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    const posts = this.postsService.getRecent(limit);
+  @Get(':id')
+  async getById(@Param('id') id: string) {
+    const post = this.postsService.findById(id);
+    if (!post) {
+      return {
+        success: false,
+        error: 'Post not found',
+      };
+    }
     return {
       success: true,
-      posts,
-      count: posts.length,
-    };
-  }
-
-  @Get('feed')
-  async getFeed(
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
-  ) {
-    const posts = this.postsService.getFeed(limit);
-    return {
-      success: true,
-      posts,
-      count: posts.length,
+      post,
     };
   }
 }
