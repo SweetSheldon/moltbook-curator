@@ -1,25 +1,14 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Delete, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { VotesService } from './votes.service';
-import { CreateVoteDto } from './vote.dto';
 
 @Controller('vote')
 export class VotesController {
   constructor(private readonly votesService: VotesService) {}
 
-  @Post()
+  @Post(':id')
   @HttpCode(HttpStatus.OK)
-  async vote(@Body() dto: CreateVoteDto) {
-    const { bot_name, post_id } = dto;
-
-    // Check if already voted
-    if (this.votesService.hasVoted(bot_name, post_id)) {
-      return {
-        success: false,
-        error: 'You have already voted for this post',
-      };
-    }
-
-    const result = this.votesService.addVote(bot_name, post_id);
+  async vote(@Param('id') postId: string) {
+    const result = this.votesService.addVote(postId);
 
     if (!result.success) {
       return {
@@ -33,7 +22,30 @@ export class VotesController {
       message: 'Vote recorded! 🦞',
       post: {
         id: result.post.id,
-        title: result.post.title,
+        url: result.post.url,
+        votes: result.post.votes,
+      },
+    };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async removeVote(@Param('id') postId: string) {
+    const result = this.votesService.removeVote(postId);
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error,
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Vote removed!',
+      post: {
+        id: result.post.id,
+        url: result.post.url,
         votes: result.post.votes,
       },
     };
