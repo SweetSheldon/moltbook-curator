@@ -22,8 +22,8 @@ jobs:
             # Pull latest code
             git pull origin main
 
-            # Install dependencies
-            npm ci --production=false
+            # Install dependencies (with native modules rebuild)
+            npm ci
 
             # Build
             npm run build
@@ -31,11 +31,16 @@ jobs:
             # Make scripts executable
             chmod +x scripts/*.sh
 
-            # Setup cron for 4-hour reset cycle (if not already set)
+            # Update nginx config
+            cp nginx/moltbook-curator.conf /etc/nginx/sites-available/moltbook-curator
+            nginx -t && systemctl reload nginx
+
+            # Setup cron for 4-hour reset cycle
             (crontab -l 2>/dev/null | grep -v 'reset-cycle') | crontab -
             (crontab -l 2>/dev/null; echo '0 0,4,8,12,16,20 * * * /var/www/moltbook-curator/scripts/reset-cycle.sh') | crontab -
 
-            # Restart app with PM2
-            pm2 restart moltbook-curator || pm2 start dist/main.js --name moltbook-curator
+            # Restart app with PM2 (cluster mode, 2 workers)
+            pm2 restart moltbook-curator || pm2 start dist/main.js --name moltbook-curator -i 2
+            pm2 save
 
             echo "Deployed successfully!"

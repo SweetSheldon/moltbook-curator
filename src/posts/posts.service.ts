@@ -1,249 +1,123 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Project } from './post.interface';
-import { Mutex } from 'async-mutex';
+import Database from 'better-sqlite3';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
-export class PostsService {
-  private projects: Project[] = [];
-  private fileMutex = new Mutex();
+export class PostsService implements OnModuleInit {
+  private db: Database.Database;
 
-  // Rate limiting store (in-memory for now)
-  private rateLimits = new Map<string, { count: number; reset: number }>();
-  private readonly MAX_PROJECTS_PER_MINUTE = 10;
-  private readonly MINUTE = 60000; // 60 seconds in ms
+  onModuleInit() {
+    const dataDir = path.join(process.cwd(), 'data');
+    fs.mkdirSync(dataDir, { recursive: true });
 
-  // Anti-spam: Track recent posts from same agent
-  private recentPosts = new Map<string, number>(); // agent_name -> timestamp
+    this.db = new Database(path.join(dataDir, 'curator.db'));
+    this.db.pragma('journal_mode = WAL'); // Fast writes
+    this.db.pragma('synchronous = NORMAL'); // Good balance of safety/speed
 
-  private async loadData(): Promise<Project[]> {
-    const release = await this.fileMutex.acquire();
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const dataPath = path.join(process.cwd(), 'data', 'projects.json');
+    // Create tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        url TEXT UNIQUE NOT NULL,
+        description TEXT DEFAULT '',
+        submitted_by TEXT DEFAULT 'anonymous',
+        votes INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_voted_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_votes ON projects(votes DESC);
+      CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_projects_url ON projects(url);
 
-      if (fs.existsSync(dataPath)) {
-        const data = fs.readFileSync(dataPath, 'utf-8');
-        this.projects = JSON.parse(data);
-      }
-      return this.projects;
-    } catch (error) {
-      console.error('Failed to load projects:', error.message);
-      this.projects = [];
-      return this.projects;
-    } finally {
-      release();
-    }
+      CREATE TABLE IF NOT EXISTS archives (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        archived_at TEXT NOT NULL,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_archives_date ON archives(archived_at DESC);
+    `);
   }
 
-  private async saveData(): Promise<void> {
-    const release = await this.fileMutex.acquire();
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const dataDir = path.join(process.cwd(), 'data');
-      const dataPath = path.join(dataDir, 'projects.json');
-
-      fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(dataPath, JSON.stringify(this.projects, null, 2));
-    } catch (error) {
-      console.error('Failed to save projects:', error.message);
-    } finally {
-      release();
-    }
-  }
-
-  private checkRateLimit(submittedBy: string): boolean {
-    const now = Date.now();
-    const key = submittedBy.toLowerCase();
-
-    if (!this.rateLimits.has(key)) {
-      this.rateLimits.set(key, { count: 1, reset: now + this.MINUTE });
-      return true;
-    }
-
-    const limit = this.rateLimits.get(key)!;
-    if (now > limit.reset) {
-      this.rateLimits.set(key, { count: 1, reset: now + this.MINUTE });
-      return true;
-    }
-
-    if (limit.count >= this.MAX_PROJECTS_PER_MINUTE) {
-      return false; // Rate limited
-    }
-
-    limit.count++;
-    this.rateLimits.set(key, limit);
-    return true;
-  }
-
-  private checkAntiSpam(submittedBy: string): boolean {
-    const now = Date.now();
-    const key = submittedBy.toLowerCase();
-
-    if (!this.recentPosts.has(key)) {
-      this.recentPosts.set(key, now);
-      return true;
-    }
-
-    // Cooldown: 30 seconds minimum
-    const MIN_COOLDOWN = 30000; // 30 seconds
-    if (now - this.recentPosts.get(key)! < MIN_COOLDOWN) {
-      return false; // Too many posts from same agent
-    }
-
-    this.recentPosts.set(key, now);
-    return true;
-  }
-
-  async create(
-    url: string,
-    description: string,
-    submittedBy: string,
-  ): Promise<Project> {
-    await this.loadData();
-
-    // Check rate limits
-    if (!this.checkRateLimit(submittedBy)) {
-      throw {
-        success: false,
-        error: `Rate limit exceeded: Maximum ${this.MAX_PROJECTS_PER_MINUTE} projects per minute`,
-        cooldown: 'Wait before posting again',
-        retry_after_seconds: 60,
-      };
-    }
-
-    // Check anti-spam (cooldown)
-    if (!this.checkAntiSpam(submittedBy)) {
-      throw {
-        success: false,
-        error: 'You are posting too frequently. Please wait 30 seconds between projects.',
-        cooldown: 'Wait before posting again',
-        retry_after_seconds: 30,
-      };
-    }
-
-    // Check if URL already exists
-    const existing = this.projects.find(p => p.url === url);
+  async create(url: string, description: string, submittedBy: string): Promise<Project> {
+    // Check if exists
+    const existing = this.db.prepare('SELECT * FROM projects WHERE url = ?').get(url) as Project | undefined;
     if (existing) {
       return existing;
     }
 
-    const project: Project = {
-      id: `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      url,
-      description,
-      submitted_by: submittedBy || 'anonymous',
-      votes: 0,
-      created_at: new Date().toISOString(),
-    };
+    const id = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const created_at = new Date().toISOString();
 
-    this.projects.push(project);
-    await this.saveData();
+    const stmt = this.db.prepare(`
+      INSERT INTO projects (id, url, description, submitted_by, votes, created_at)
+      VALUES (?, ?, ?, ?, 0, ?)
+    `);
+    stmt.run(id, url, description || '', submittedBy || 'anonymous', created_at);
 
-    return project;
+    return { id, url, description: description || '', submitted_by: submittedBy || 'anonymous', votes: 0, created_at };
   }
 
-  async getAll(limit?: number): Promise<Project[]> {
-    const projects = await this.loadData();
-    if (limit) {
-      return projects.slice(0, limit);
-    }
-    return projects;
+  async getAll(limit: number = 50): Promise<Project[]> {
+    return this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC LIMIT ?').all(limit) as Project[];
   }
 
-  async getTop(limit: number): Promise<Project[]> {
-    const projects = await this.loadData();
-    return projects
-      .sort((a, b) => b.votes - a.votes)
-      .slice(0, limit);
+  async getTop(limit: number = 10): Promise<Project[]> {
+    return this.db.prepare('SELECT * FROM projects ORDER BY votes DESC LIMIT ?').all(limit) as Project[];
   }
 
   async getRecent(limit: number = 20): Promise<Project[]> {
-    const projects = await this.loadData();
-    return projects
-      .sort((a, b) => {
-        const timeA = new Date(b.created_at).getTime();
-        const timeB = new Date(a.created_at).getTime();
-        return timeB - timeA;
-      })
-      .slice(0, limit);
+    return this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC LIMIT ?').all(limit) as Project[];
   }
 
   async findById(id: string): Promise<Project | undefined> {
-    const projects = await this.loadData();
-    return projects.find(p => p.id === id);
+    return this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project | undefined;
   }
 
   async findByUrl(url: string): Promise<Project | undefined> {
-    const projects = await this.loadData();
-    return projects.find(p => p.url === url);
+    return this.db.prepare('SELECT * FROM projects WHERE url = ?').get(url) as Project | undefined;
   }
 
   async incrementVotes(id: string, submittedBy?: string): Promise<Project | undefined> {
-    const release = await this.fileMutex.acquire();
-    try {
-      // Reload data inside lock
-      const fs = require('fs');
-      const path = require('path');
-      const dataPath = path.join(process.cwd(), 'data', 'projects.json');
+    const project = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project | undefined;
 
-      if (fs.existsSync(dataPath)) {
-        const data = fs.readFileSync(dataPath, 'utf-8');
-        this.projects = JSON.parse(data);
-      }
+    if (!project) return undefined;
 
-      // Find project
-      const project = this.projects.find(p => p.id === id);
-
-      // Anti-voting: Check if voter is the project owner
-      if (project && project.submitted_by === submittedBy) {
-        return undefined; // Cannot vote on own project
-      }
-
-      if (project) {
-        project.votes += 1;
-        project.last_voted_at = new Date().toISOString();
-
-        // Save inside lock
-        const dataDir = path.join(process.cwd(), 'data');
-        fs.mkdirSync(dataDir, { recursive: true });
-        fs.writeFileSync(dataPath, JSON.stringify(this.projects, null, 2));
-      }
-
-      return project;
-    } catch (error) {
-      console.error('Failed to increment project votes:', error.message);
+    // Can't vote on own post
+    if (submittedBy && project.submitted_by === submittedBy) {
       return undefined;
-    } finally {
-      release();
     }
+
+    const last_voted_at = new Date().toISOString();
+    this.db.prepare('UPDATE projects SET votes = votes + 1, last_voted_at = ? WHERE id = ?').run(last_voted_at, id);
+
+    return this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project;
   }
 
-  async getStats(submittedBy?: string): Promise<{
+  async getStats(): Promise<{
     total_projects: number;
     recent_projects: number;
     top_contributors: Array<{ name: string; votes: number }>;
   }> {
-    const projects = await this.loadData();
+    const total = this.db.prepare('SELECT COUNT(*) as count FROM projects').get() as { count: number };
 
-    const stats = {
-      total_projects: projects.length,
-      recent_projects: projects.filter(p => {
-        const age = Date.now() - new Date(p.created_at).getTime();
-        return age < 86400000; // Less than 24 hours
-      }).length,
-      top_contributors: Array.from(
-        new Map(
-          projects.map(p => [
-            p.submitted_by,
-            projects.filter(proj => proj.submitted_by === p.submitted_by).reduce((sum, proj) => sum + proj.votes, 0)
-          ])
-        )
-      ).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 10).map(([name, votes]) => ({ name: name as string, votes: votes as number }))
+    const dayAgo = new Date(Date.now() - 86400000).toISOString();
+    const recent = this.db.prepare('SELECT COUNT(*) as count FROM projects WHERE created_at > ?').get(dayAgo) as { count: number };
+
+    const contributors = this.db.prepare(`
+      SELECT submitted_by as name, SUM(votes) as votes
+      FROM projects
+      GROUP BY submitted_by
+      ORDER BY votes DESC
+      LIMIT 10
+    `).all() as Array<{ name: string; votes: number }>;
+
+    return {
+      total_projects: total.count,
+      recent_projects: recent.count,
+      top_contributors: contributors,
     };
-
-    return stats;
   }
 
   async getLatestArchive(): Promise<{
@@ -251,40 +125,31 @@ export class PostsService {
     count: number;
     archived_at: string | null;
   }> {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const archiveDir = path.join(process.cwd(), 'data', 'archive');
+    const archive = this.db.prepare('SELECT * FROM archives ORDER BY archived_at DESC LIMIT 1').get() as { archived_at: string; data: string } | undefined;
 
-      if (!fs.existsSync(archiveDir)) {
-        return { posts: [], count: 0, archived_at: null };
-      }
-
-      const files = fs.readdirSync(archiveDir)
-        .filter((f: string) => f.startsWith('projects_') && f.endsWith('.json'))
-        .sort()
-        .reverse();
-
-      if (files.length === 0) {
-        return { posts: [], count: 0, archived_at: null };
-      }
-
-      const latestFile = files[0];
-      const data = fs.readFileSync(path.join(archiveDir, latestFile), 'utf-8');
-      const posts = JSON.parse(data);
-
-      // Extract timestamp from filename: projects_2026-02-01_16-00.json
-      const match = latestFile.match(/projects_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.json/);
-      const archived_at = match ? match[1].replace('_', 'T').replace('-', ':') + ':00Z' : null;
-
-      return {
-        posts,
-        count: posts.length,
-        archived_at,
-      };
-    } catch (error) {
-      console.error('Failed to load archive:', error.message);
+    if (!archive) {
       return { posts: [], count: 0, archived_at: null };
     }
+
+    const posts = JSON.parse(archive.data) as Project[];
+    return { posts, count: posts.length, archived_at: archive.archived_at };
+  }
+
+  // Called by reset-cycle.sh via API
+  async archiveAndReset(): Promise<{ archived_count: number }> {
+    const projects = this.db.prepare('SELECT * FROM projects ORDER BY votes DESC').all() as Project[];
+
+    if (projects.length > 0) {
+      const archived_at = new Date().toISOString();
+      this.db.prepare('INSERT INTO archives (archived_at, data) VALUES (?, ?)').run(archived_at, JSON.stringify(projects));
+
+      // Keep only last 42 archives (7 days * 6 per day)
+      this.db.prepare('DELETE FROM archives WHERE id NOT IN (SELECT id FROM archives ORDER BY archived_at DESC LIMIT 42)').run();
+    }
+
+    // Reset projects
+    this.db.prepare('DELETE FROM projects').run();
+
+    return { archived_count: projects.length };
   }
 }

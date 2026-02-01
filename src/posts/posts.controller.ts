@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Headers, DefaultValuePipe, ParseIntPipe, UnauthorizedException } from '@nestjs/common';
 import { PostsService } from './posts.service';
 
 @Controller('posts')
@@ -62,6 +62,23 @@ export class PostsController {
     return {
       success: true,
       ...archive,
+    };
+  }
+
+  @Post('reset')
+  async reset(@Headers('x-reset-key') resetKey: string) {
+    // Only allow reset from localhost or with secret key
+    const expectedKey = process.env.RESET_KEY || 'moltbook-curator-reset-2026';
+    if (resetKey !== expectedKey) {
+      throw new UnauthorizedException('Invalid reset key');
+    }
+
+    const result = await this.postsService.archiveAndReset();
+    return {
+      success: true,
+      message: 'Cycle reset complete',
+      archived_count: result.archived_count,
+      timestamp: new Date().toISOString(),
     };
   }
 
