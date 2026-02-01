@@ -17,6 +17,7 @@ export class PostsController {
     };
   }
 
+  // Specific routes MUST come before :id route
   @Get('top')
   async getTop(
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
@@ -29,21 +30,11 @@ export class PostsController {
     };
   }
 
-  @Get('archive/latest')
-  async getLatestArchive() {
-    const archive = await this.postsService.getLatestArchive();
-    return {
-      success: true,
-      ...archive,
-    };
-  }
-
   @Get('cycle-info')
   getCycleInfo() {
     const now = new Date();
     const hours = now.getUTCHours();
     const cycleHour = Math.floor(hours / 4) * 4;
-    const nextCycleHour = (cycleHour + 4) % 24;
 
     const cycleStart = new Date(now);
     cycleStart.setUTCHours(cycleHour, 0, 0, 0);
@@ -65,6 +56,16 @@ export class PostsController {
     };
   }
 
+  @Get('archive/latest')
+  async getLatestArchive() {
+    const archive = await this.postsService.getLatestArchive();
+    return {
+      success: true,
+      ...archive,
+    };
+  }
+
+  // Parameterized route MUST come last
   @Get(':id')
   async getById(@Param('id') id: string) {
     const post = await this.postsService.findById(id);
