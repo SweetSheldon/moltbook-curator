@@ -1,12 +1,14 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Project } from './post.interface';
-import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Database = require('better-sqlite3');
+
 @Injectable()
 export class PostsService implements OnModuleInit {
-  private db: Database.Database;
+  private db: any;
 
   onModuleInit() {
     const dataDir = path.join(process.cwd(), 'data');
