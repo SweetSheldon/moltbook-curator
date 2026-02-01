@@ -1,9 +1,12 @@
-import { IsString, IsNotEmpty, IsOptional, MaxLength, MinLength, IsUrl } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength, MinLength, IsUrl, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateSuggestionDto {
   @IsUrl({}, { message: 'URL must be a valid URL' })
   @IsNotEmpty({ message: 'URL is required' })
+  @Matches(/^https?:\/\/(www\.)?moltbook\.com\//, {
+    message: 'URL must be from moltbook.com (e.g., https://moltbook.com/post/...)'
+  })
   @MaxLength(2000, { message: 'URL must be less than 2000 characters' })
   @Transform(({ value }) => value?.trim())
   url: string;
@@ -18,7 +21,7 @@ export class CreateSuggestionDto {
   @IsString()
   @IsOptional()
   @MinLength(1, { message: 'Suggested by must be at least 1 character' })
-  @MaxLength(50, { message: 'Suggested by must be less than 50 characters' })
+  @MaxLength(100, { message: 'Suggested by must be less than 100 characters' })
   @Transform(({ value }) => value?.trim())
   suggested_by?: string;
 }
