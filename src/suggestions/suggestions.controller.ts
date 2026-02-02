@@ -18,12 +18,13 @@ export class SuggestionsController {
 
     return {
       success: true,
-      message: 'Post suggested!',
+      message: post.status === 'pending' ? 'Post submitted for validation' : 'Post suggested!',
       post: {
         id: post.id,
         url: post.url,
         description: post.description,
         votes: post.votes,
+        status: post.status,
         created_at: post.created_at,
       },
     };

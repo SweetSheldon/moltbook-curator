@@ -27,7 +27,9 @@ export class PostsService implements OnModuleInit {
         submitted_by TEXT DEFAULT 'anonymous',
         votes INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
-        last_voted_at TEXT
+        last_voted_at TEXT,
+        status TEXT DEFAULT 'pending',
+        retry_count INTEGER DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_projects_votes ON projects(votes DESC);
       CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at DESC);
@@ -40,37 +42,63 @@ export class PostsService implements OnModuleInit {
       );
       CREATE INDEX IF NOT EXISTS idx_archives_date ON archives(archived_at DESC);
     `);
+
+    // Migration: Add new columns if they don't exist (for existing databases)
+    this.runMigrations();
   }
 
-  async create(url: string, description: string, submittedBy: string): Promise<Project> {
-    // Check if exists
-    const existing = this.db.prepare('SELECT * FROM projects WHERE url = ?').get(url) as Project | undefined;
+  private runMigrations() {
+    const columns = this.db.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>;
+    const columnNames = columns.map(c => c.name);
+
+    // Add status column if missing (set existing records to 'approved')
+    if (!columnNames.includes('status')) {
+      this.db.exec(`ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'approved'`);
+      // Existing records get 'approved' status (they were already validated before this feature)
+    }
+
+    // Add retry_count column if missing
+    if (!columnNames.includes('retry_count')) {
+      this.db.exec(`ALTER TABLE projects ADD COLUMN retry_count INTEGER DEFAULT 0`);
+    }
+  }
+
+  async create(url: string, description: string, submittedBy: string): Promise<Project & { status: string }> {
+    // Check if approved post already exists
+    const existing = this.db.prepare("SELECT * FROM projects WHERE url = ? AND status = 'approved'").get(url) as Project | undefined;
     if (existing) {
-      return existing;
+      return { ...existing, status: 'approved' };
+    }
+
+    // Check if pending post exists (don't duplicate)
+    const pending = this.db.prepare("SELECT * FROM projects WHERE url = ? AND status = 'pending'").get(url) as Project | undefined;
+    if (pending) {
+      return { ...pending, status: 'pending' };
     }
 
     const id = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const created_at = new Date().toISOString();
 
+    // Insert as pending - worker will validate and approve/delete
     const stmt = this.db.prepare(`
-      INSERT INTO projects (id, url, description, submitted_by, votes, created_at)
-      VALUES (?, ?, ?, ?, 0, ?)
+      INSERT INTO projects (id, url, description, submitted_by, votes, created_at, status, retry_count)
+      VALUES (?, ?, ?, ?, 0, ?, 'pending', 0)
     `);
     stmt.run(id, url, description || '', submittedBy || 'anonymous', created_at);
 
-    return { id, url, description: description || '', submitted_by: submittedBy || 'anonymous', votes: 0, created_at };
+    return { id, url, description: description || '', submitted_by: submittedBy || 'anonymous', votes: 0, created_at, status: 'pending' };
   }
 
   async getAll(limit: number = 50): Promise<Project[]> {
-    return this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC LIMIT ?').all(limit) as Project[];
+    return this.db.prepare("SELECT * FROM projects WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?").all(limit) as Project[];
   }
 
   async getTop(limit: number = 10): Promise<Project[]> {
-    return this.db.prepare('SELECT * FROM projects ORDER BY votes DESC LIMIT ?').all(limit) as Project[];
+    return this.db.prepare("SELECT * FROM projects WHERE status = 'approved' ORDER BY votes DESC LIMIT ?").all(limit) as Project[];
   }
 
   async getRecent(limit: number = 20): Promise<Project[]> {
-    return this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC LIMIT ?').all(limit) as Project[];
+    return this.db.prepare("SELECT * FROM projects WHERE status = 'approved' ORDER BY created_at DESC LIMIT ?").all(limit) as Project[];
   }
 
   async findById(id: string): Promise<Project | undefined> {

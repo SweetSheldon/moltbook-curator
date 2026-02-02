@@ -5,6 +5,7 @@ import { VotesModule } from './votes/votes.module';
 import { SuggestionsModule } from './suggestions/suggestions.module';
 import { HealthModule } from './health/health.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { MoltbookModule } from './moltbook/moltbook.module';
 
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { PrivacyModule } from './privacy/privacy.module';
     SuggestionsModule,
     HealthModule,
     PrivacyModule,
+    MoltbookModule,
   ],
 })
 export class AppModule {}
+
