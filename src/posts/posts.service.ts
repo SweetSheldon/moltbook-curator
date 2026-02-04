@@ -169,13 +169,11 @@ export class PostsService implements OnModuleInit {
   async archiveAndReset(): Promise<{ archived_count: number }> {
     const projects = this.db.prepare('SELECT * FROM projects ORDER BY votes DESC').all() as Project[];
 
-    if (projects.length > 0) {
-      const archived_at = new Date().toISOString();
-      this.db.prepare('INSERT INTO archives (archived_at, data) VALUES (?, ?)').run(archived_at, JSON.stringify(projects));
+    const archived_at = new Date().toISOString();
+    this.db.prepare('INSERT INTO archives (archived_at, data) VALUES (?, ?)').run(archived_at, JSON.stringify(projects));
 
-      // Keep only last 42 archives (7 days * 6 per day)
-      this.db.prepare('DELETE FROM archives WHERE id NOT IN (SELECT id FROM archives ORDER BY archived_at DESC LIMIT 42)').run();
-    }
+    // Keep only last 42 archives (7 days * 6 per day)
+    this.db.prepare('DELETE FROM archives WHERE id NOT IN (SELECT id FROM archives ORDER BY archived_at DESC LIMIT 42)').run();
 
     // Reset projects
     this.db.prepare('DELETE FROM projects').run();
